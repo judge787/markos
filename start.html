@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>poolsim</title>
+    <style>
+        body {
+            height: 100vh; /* Make html and body take full height */
+            margin: 0;
+            padding: 0;
+            flex-direction: column; /* Stack children vertically */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            
+        }
+        #header {
+            text-align: center;
+            
+             /* Add some padding at the top */
+        }
+        #main {
+            display: flex;
+            width: 80vw; /* Set a max-width for the main content */
+            height: 70vh;
+            align-items: center;
+            
+        }
+        #player1, #player2 {
+            flex: 1; /* Flex children with equal space */
+            padding: 20px;
+            text-align: center;
+        }
+        #poolDiv {
+            
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transform: scale(0.3); /* Adjust scale as needed */
+        }
+        #lineDiv {
+            z-index: 50;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            
+            pointer-events: none;
+        }
+        .line {
+            stroke: black;
+            stroke-width: 3;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+
+        <h2 id="gameName"></h2>
+    </div>
+    <br>
+    <div id="main">
+        <div id="player1">
+            <h3 id="player1Name"></h3>
+            <p id="p1Playing"></p>
+            <p id="player1Score"></p>
+            
+        </div>
+        <div id="poolDiv">
+            <!-- The SVG or IMG goes here -->
+        </div>
+        <div id="player2">
+            <h3 id="player2Name"></h3>
+            <p id="p2Playing"></p>
+            <p id="player2Score"></p>
+            
+        </div>
+        <svg id="lineDiv"></svg>
+    </div>
+</body>
+
+
+<script>    
+    const id = '{id}';
+    
+    let queBall;
+    let que;
+    let isDrawing = false;
+    let xVelocity, yVelocity;
+
+
+
+    function drawQue() {
+        if (!isDrawing) {
+            return;
+        }
+        else {
+            //this gets the que ball pos on the overlay
+            const lineDiv = document.getElementById('lineDiv');
+            lineRl = lineDiv.getBoundingClientRect().left;
+            lineRt = lineDiv.getBoundingClientRect().top;
+            const qr = queBall.getBoundingClientRect();
+            const qx = (qr.width/2)+qr.left;
+            const qy = (qr.height/2)+qr.top;
+
+            const qxPos = qx-lineRl;
+            const qyPos = qy-lineRt;
+            //this gets the end cursor pos
+            const point = lineDiv.createSVGPoint();
+            point.x = event.clientX;
+            point.y = event.clientY;
+
+            mousePos = point.matrixTransform(lineDiv.getScreenCTM().inverse())
+
+            //calculation vel of the ball
+            let x = qx-point.x
+            let y = qy-point.y
+
+            xVelocity = x * 15
+            yVelocity = y * 15
+
+            xVelocity = Math.min(4000,Math.max(-4000,xVelocity))
+            yVelocity = Math.min(4000,Math.max(-4000,yVelocity))
+
+            let d = Math.sqrt((x*x)+(y*y))
+
+
+            //200 is max line len
+            if (d > 100) {
+                let scale = 100/d
+                x = scale*x
+                y = scale*y
+            }
+
+            if (!que) {
+                que = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+                que.setAttribute('class', 'line')
+                lineDiv.appendChild(que)
+            }
+        
+
+            que.setAttribute('x1', qx)
+            que.setAttribute('y1', qy)
+            que.setAttribute('x2', qx-x)
+            que.setAttribute('y2', qy-y)
+
+
+        }
+    }
+
+    function click() {
+        isDrawing = true;
+        document.body.style.cursor = isDrawing ? 'grab':'default';
+        document.addEventListener('mousemove', drawQue);
+        document.addEventListener('mouseup', release)
+    }
+
+    function release() {
+        isDrawing = false;
+        document.body.style.cursor = isDrawing ? 'grab':'default';
+        document.removeEventListener('mousemove', drawQue);
+        document.removeEventListener('mouseup', release)
+        if (que) {
+            document.getElementById('lineDiv').innerHTML = ""
+            que = null;
+            shoot(getStats)
+        }
+        
+    }
+
+
+    //create a post request same as the first get requesrt
+    //copy the whole get stats remove all get elements
+    //keep call back
+    //on the server create an elif post response for /shoot
+    //do it the same way it was done for start.html
+    //get the x and y vel, call shoot with the lasttable from the server
+    //createa a list of fallen balls in shoot
+    //clear the data base and make sure it populates with the correct shot info
+    function shoot(callBack) {
+        const http = new XMLHttpRequest();
+        http.onreadystatechange = function() {
+        if (this.readyState === 4) {
+            if (this.status === 200) {
+                const listOfSVGS = JSON.parse(this.responseText);
+                const poolDiv = document.getElementById('poolDiv');
+
+                // Function to update the SVG content
+                function updateSVG(svg, delay) {
+                    return new Promise(resolve => {
+                        setTimeout(() => {
+                            poolDiv.innerHTML = ""; // Clear the current SVG
+                            poolDiv.innerHTML = svg; // Set the new SVG
+                            resolve(); // Resolve the promise after the timeout
+                        }, delay);
+                    });
+                }
+
+                // Use Promise.all to wait for all SVG updates to complete
+                const updatePromises = [];
+                for (let i = 0; i < listOfSVGS.length; i++) {
+                    const svg = listOfSVGS[i];
+                    const delay = i * 20; // Adjust delay as needed
+                    // Push the updateSVG promise to the array
+                    updatePromises.push(updateSVG(svg, delay));
+                }
+
+                // Once all SVGs have been updated, call the callback
+                Promise.all(updatePromises).then(() => {
+                    if (callBack) {
+                        callBack(reset);
+                    }
+                });
+            } else {
+                console.error("Error on /shoot endpoint", this.statusText);
+            }
+        }
+    };
+
+        // Prepare the data to send in the POST request
+
+        // Configure the request to send JSON, and point it to the correct endpoint if different
+        http.open("POST", "/shoot", true);
+        http.setRequestHeader("Content-Type", "application/x-www-form-urlencoded"); 
+        http.send("&xVelocity="+encodeURIComponent(xVelocity)+ "&yVelocity="+encodeURIComponent(yVelocity));
+    }
+
+    function reset() {
+        isDrawing = false;
+        que = null;
+        svgTable = document.getElementById('poolTable');
+        console.log("called reset")
+        // Ensure this runs after the SVG is fully loaded/updated
+        queBall = svgTable.querySelector('circle[fill="WHITE"]');
+        if (queBall) {
+            queBall.addEventListener('mousedown', click);
+        } else {
+            console.error("Que ball not found. Ensure the SVG is loaded and the selector is correct.");
+        }
+    }
+
+
+    function getStats(callBack){
+        const http = new XMLHttpRequest();
+            http.onreadystatechange = function() {
+                if (this.readyState === 4) {
+                    if (this.status === 200) {
+                        const gamestats = JSON.parse(this.responseText);
+
+                            const poolDiv = document.getElementById('poolDiv');
+                            poolDiv.innerHTML = "";
+                            poolDiv.innerHTML = gamestats["poolTableSvg"];
+
+                            const gameName = document.getElementById('gameName');
+                            gameName.innerHTML = "";
+                            gameName.innerHTML = gamestats["gameName"];
+                            
+                            const player1Name = document.getElementById('player1Name');
+                            player1Name.innerHTML = "";
+                            player1Name.innerHTML = gamestats["player1Name"];
+
+                            const player2Name = document.getElementById('player2Name');
+                            player2Name.innerHTML = "";
+                            player2Name.innerHTML = gamestats["player2Name"];
+
+                            const p1Playing = document.getElementById('p1Playing');
+                            p1Playing.innerHTML = "";
+                            p1Playing.innerHTML = gamestats["p1Playing"];
+
+                            const p2Playing = document.getElementById('p2Playing');
+                            p2Playing.innerHTML = "";
+                            p2Playing.innerHTML = gamestats["p2Playing"];
+
+                            const player2Score = document.getElementById('player2Score');
+                            player2Score.innerHTML = "";
+                            player2Score.innerHTML = gamestats["player2Score"];
+
+                            const player1Score = document.getElementById('player1Score');
+                            player1Score.innerHTML = "";
+                            player1Score.innerHTML = gamestats["player1Score"];
+
+                            if (callBack) {
+                                callBack()
+                            }
+                            
+                    } else {
+                        
+                        console.error("Error: /getStats failed", this.statusText);
+                    }
+                }
+            };
+            
+            http.open("GET", `/getStats?id=${encodeURIComponent(id)}`, true);
+            http.send();
+    }
+    getStats(reset);
+    
+    
+</script>
+</html>
